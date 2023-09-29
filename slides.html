@@ -1,0 +1,373 @@
+<!-- barbie pink: #f30ba1 -->
+<!-- cream background: #f3efea -->
+
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Proxying with NGINX</title>
+    <meta charset="utf-8">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Itim&family=Kreon:wght@300&display=swap" rel="stylesheet">
+
+    <style>
+      body { font-family: 'Kreon', serif; }
+      h1, h2, h3 {
+        font-family: 'Itim', cursive;
+      }
+      a {
+        color: #fff;
+      }
+      li {
+        font-size: 30pt;
+        font-family: 'Itim', cursive;
+      }
+      code {
+        font-family: 'Ubuntu Mono';
+      }
+      .remark-code, .remark-inline-code { font-family: 'Ubuntu Mono'; }
+      .inverse {
+        background: #e02189;
+        color: #fff;
+      }
+      .remark-slide-content {
+        background-size: contain;
+        background-position: center;
+        background-repeat: no-repeat;
+      }
+      .stripe {
+        height: 5px;
+        width: 100%;
+        background-color: indigo;
+        border-top: 1px solid rebeccapurple;
+        border-bottom: 1px solid rebeccapurple;
+        position: absolute;
+        margin-top: 125px;
+        left: 0;
+        right: 0;
+      }
+      .remark-slide-right {
+          bottom: 12px;
+          position: absolute;
+          left: 20px;
+      }
+      img {
+        max-width: 100%;
+        height: auto;
+      }
+      .carmalou {
+          color: #CCBADC;
+      }
+      .no-margin-bottom h3 {
+        margin-bottom: 0;
+      }
+      .javascript {
+        line-height: 1.5;
+      }
+      .flex-parent {
+        display: flex;
+        justify-content: space-evenly;
+      }
+      .flex-img {
+        width: 50%;
+        object-fit: contain;
+      }
+    </style>
+  </head>
+  <body>
+    <textarea id="source">
+
+class: center, middle
+
+<img alt="Proxying with NGINX" src="./gifs/proxy-title.png" />
+
+???
+Before we jump in, I want to say that if I miss questions in the chat or if I get to talking too fast, pls unmute and say let me know. :joy:
+
+Questions are encouraged, so pls don't feel like you have to wait until the end.
+---
+class: left, middle, inverse
+
+# A little bit about me
+
+<div class="flex-parent">
+  <img class="flex-img" src="./gifs/hi-barbie.gif">
+  <ul>
+    <li>Team Phoenix on IDG</li>
+    <li>Several different languages</li>
+    <li>Offline Tech</li>
+    <li>Boardgames + Crafts</li>
+  </ul>
+</div>
+
+???
+A little bit about me ... I'm on IDG on team phoenix (altho, is it still called IDG?). In my career I've worked all over the stack with various languages, but my favorite thing to build is offline tech. That could honestly be a complete talk on its own, but I think offline accessibility is going to be a game changer in our field.
+
+And then of course, I like to get away from the computer and play board games and cross stitch.
+---
+class: center, middle, inverse
+
+# What is NGINX?
+
+???
+This talk is really about how I solved my problem of needing to run AG and Rent over SSL so that I could work with google one-tap. There's different modules out there that say they help with this, but I didn't really care for them (or they didn't work / were old / etc),so I went back to something tried and true: NGINX.
+---
+class: left, middle, inverse
+
+# What is NGINX?
+
+### NGINX is open source software for web serving, reverse proxying, caching, load balancing, media streaming, and more. It started out as a web server designed for maximum performance and stability. In addition to its HTTP server capabilities, NGINX can also function as a proxy server for email (IMAP, POP3, and SMTP) and a reverse proxy and load balancer for HTTP, TCP, and UDP servers.
+
+— nginx.com
+
+???
+This is the definition from NGINX's website, but I don't really expect you to read the whole thing. The main takeaway here is that NGINX is a really powerful tool for running servers. At first you might find it intimidating, but I hope by the end of this talk, you find it a little more approachable for your development uses.
+
+Because ....
+
+---
+class: center, middle, inverse
+
+# Not just for a server
+
+???
+As you've probably guessed by now, it's not just for the server. If you want to emulate a server on your dev machine, which is what we are really doing when we run something locally, NGINX can help with this.
+
+---
+class: left, middle, inverse
+
+# The problem:
+
+## Third-party services disallow localhost
+
+???
+Lots of services have disallowed `localhost` to be able to utilize their service for security reasons. It makes a lot of sense, but it creates an additional step for our development.
+---
+class: left, middle, inverse
+
+# The problem:
+
+## Third-party services disallow localhost
+
+## Third-party services require SSL
+
+???
+Additionally most services require you to be running SSL in order to utilize their service, again for security reasons. This is a positive for users, since it ensures that data shared will be encrypted, but again, it creates additional steps for our development process.
+
+Fortunately, I think by the end of this talk, you'll all have a very straightforward solution to both proxy SSL and avoid using localhost.
+
+---
+class: left, middle, inverse
+
+# Problem 1: not running an app via `localhost`
+
+# Solution: add an entry to your `etc/hosts` file
+---
+class: left, middle, inverse
+
+# Problem 1: not running an app via `localhost`
+
+# Solution: add an entry to your `etc/hosts` file
+
+# Mine looks like this:
+
+```bash
+127.0.0.1 localhost local.rent.com local.r.rent.com rent.local local.ag.com
+```
+
+???
+`etc/hosts` is basically a dictionary. The first entry there is the home IP address, and then everything going to the right is going to try that home IP address before anything else.
+
+But if you're like me, that's probably not a very satisfying explanation, and you're probably curious about _why_ this works. So a quick explanation is that the hosts file serves as a sort of "mini-DNS" for your machine. When a request comes in, your machine will first look here and see if there's a match. If there isn't a match, the machine will next look at the DNS server.
+
+This dates back to the very early days of the internet -- really pre-internet days. Because at that time, there was no DNS server, each server had its own list of other servers, along with names to make them memorable to users. Obviously this wasn't sustainable in the long term, and so DNS servers came later.
+---
+class: center, middle, inverse
+
+# Now that we aren't running our app off of localhost, let's set up SSL proxying
+
+???
+So that was step one, and now we can move on to using NGINX. It is a little bit involved, so we'll start at the beginning
+
+---
+class: center, middle, inverse
+
+# Install NGINX
+
+## Using brew, `brew install nginx`
+---
+class: center, middle, inverse
+
+# Install NGINX
+
+## Using brew, `brew install nginx`
+## NGINX will be installed here: `/opt/homebrew/etc/nginx`
+
+---
+class: center, middle, inverse
+
+## Getting an SSL certificate with `mkcert`
+
+???
+Now that we have nginx installed, there's another crucial component -- we need an SSL certificate. Fortunately this is actually p straightforward. Let's look at how to do this using `mkcert`
+
+---
+class: center, middle, inverse
+
+## Getting an SSL certificate with `mkcert`
+
+<div class="left">
+  <ol>
+    <li>From your terminal: <code>brew install mkcert</code></li>
+    <li>From your terminal: <code>mkcert -install</code></li>
+  </ol>
+</div>
+
+???
+Pause here and then read the commands
+
+---
+class: center, middle, inverse
+
+## Getting an SSL certificate with `mkcert`
+
+<div class="left">
+  <ol>
+    <li>From your terminal: <code>brew install mkcert</code></li>
+    <li>From your terminal: <code>mkcert -install</code></li>
+    <li>cd into your nginx folder:<br> (<code>cd /opt/homebrew/etc/nginx</code>)</li>
+  </ol>
+</div>
+
+???
+pause here.
+
+note that the cert doesn't strictly _need_ to be in this folder, but for myself, I find it easier to keep everything in one place
+
+---
+class: center, middle, inverse
+
+## Getting an SSL certificate with `mkcert`
+
+<div class="left">
+  <ol>
+    <li>From your terminal: <code>brew install mkcert</code></li>
+    <li>From your terminal: <code>mkcert -install</code></li>
+    <li>cd into your nginx folder:<br> (<code>cd /opt/homebrew/etc/nginx</code>)</li>
+    <li>generate your new certificate!<br> (<code>mkcert {app}.com</code>)</li>
+  </ol>
+</div>
+
+???
+pause here.
+
+note: its important that the name of your certificate matches the alias/url you want to use to access it. so if you want to use `local.rent.com`, name your certificate `local.rent.com`
+
+I want to make another quick note about why this works. This _is not_ a self-signed certificate. This is going to create a certificate that is signed by mkcert, and when you install mkcert you instruct your machine to trust its certificates. I just want to point that out, because just like browsers don't like it when you don't have an SSL certificate, they also don't generally like it when you use a self-signed cert either. So this gets us around both of those issues.
+
+---
+class: center, middle
+
+<img alt="Image reading: 'Come on, Barbie, let's go proxy'" src="./gifs/lets-go-proxy-2.png" />
+
+???
+Now we are ready to set up NGINX to proxy our app
+
+---
+class: center, middle, inverse
+
+# Create an NGINX conf file
+
+<div class="left">
+  <ol>
+    <li><code>cd /opt/homebrew/etc/nginx/servers</code></li>
+    <ol type="a">
+      <li><code>touch {filename}.conf</code></li>
+      <li><code>nano {filename}.conf</code></li>
+    </ol>
+  </ol>
+</div>
+
+???
+pause here and then run over the commands
+
+I know there are probably some VIM people on this call, and you can obviously use vim, but I don't really like it, so I just use nano instead. It's really just whatever you're most comfortable with.
+
+---
+class: left, middle, inverse
+
+# Create an NGINX conf file
+
+```NGINX
+# HTTPS server
+server {
+    listen 443 ssl;
+    server_name local.rent.com;
+    ssl_certificate /opt/homebrew/etc/nginx/local.rent.com.pem;
+    ssl_certificate_key /opt/homebrew/etc/nginx/local.rent.com-key.pem;
+    location / {
+    proxy_pass http://localhost:9461/;
+    }
+}
+```
+???
+this is probably pretty self explanatory, but lets run through it quickly. So you're saying, I want NGINX to listen on port 443, and you're saying, specifically pay attention to anything from `local.rent.com`. 
+
+You're telling nginx which certificates to use and where they are, and lastly you're saying, if anything does from through from `local.rent.com`, I want you to route to port 9461
+---
+class: left, middle, inverse
+
+# Last steps
+
+<div class="left">
+  <ol>
+    <li>cd into your app of choice</li>
+    <li>run <code>sudo nginx</code></li>
+    <li>Start up your app</li>
+    <li>Navigate to your address (from <code>/etc/hosts</code>)</li>
+  </ol>
+</div>
+---
+class: center, middle, inverse
+
+# Success!
+
+<img src="./gifs/barbie-dancing.gif" />
+---
+class: center, middle, inverse
+
+# But wait, I have multiple apps I run on different ports
+
+???
+Fortunately we can repeat the steps above and continuing proxying all the apps we need to. Just add the new address to your `/etc/hosts` files, generate an SSL cert, and create another server file. I'll show you my set up in just a moment.
+---
+class: center, middle
+
+<img alt="We are all ngin-ough" src="./gifs/ngin-ough.png" />
+
+???
+Pause here and ask for questions. Then show your set up.
+---
+class: left, middle, inverse
+
+# References
+
+[SSL proxying explainer doc](https://docs.google.com/document/d/16LCpTy17kZvW8lF2hKGdv46DEUY3BBaaSf20td5Tcro/edit)
+
+[NGINX](https://www.nginx.com/resources/glossary/nginx/)
+
+[`/etc/hosts` definition](https://tldp.org/LDP/solrhe/Securing-Optimizing-Linux-RH-Edition-v1.3/chap9sec95.html)
+
+[mkcert](https://github.com/FiloSottile/mkcert)
+
+[NGINX conf files](https://docs.nginx.com/nginx/admin-guide/web-server/web-server/)
+
+
+    </textarea>
+    <script src="https://remarkjs.com/downloads/remark-latest.min.js">
+    </script>
+    <script>
+      var slideshow = remark.create();
+    </script>
+  </body>
+</html>
